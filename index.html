@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Alternater - Journal Maker</title>
+    <!-- Import pdf-lib from CDN -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+        h1 { color: #2c3e50; margin-bottom: 0.5rem; }
+        p { color: #7f8c8d; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        .upload-box {
+            border: 2px dashed #bdc3c7;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+        label { font-weight: bold; display: block; margin-bottom: 0.5rem; color: #34495e; }
+        input[type="file"] { width: 100%; }
+        button {
+            background-color: #2980b9;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 1rem;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: #3498db; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        #status { margin-top: 1rem; font-weight: bold; color: #27ae60; min-height: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>PDF Alternater</h1>
+    <p>Automatically insert your 1-page Journal Template before every page of your Assignment.</p>
+    
+    <div class="upload-box">
+        <label for="templatePdf">1. Upload 1-Page Template (Journal Cover)</label>
+        <input type="file" id="templatePdf" accept="application/pdf">
+    </div>
+
+    <div class="upload-box">
+        <label for="contentPdf">2. Upload Multi-Page Assignment</label>
+        <input type="file" id="contentPdf" accept="application/pdf">
+    </div>
+
+    <button id="processBtn" onclick="generateJournal()">Generate Final Journal (3 Clicks!)</button>
+    <div id="status"></div>
+</div>
+
+<script>
+    const { PDFDocument } = PDFLib;
+
+    async function generateJournal() {
+        const templateFile = document.getElementById('templatePdf').files[0];
+        const contentFile = document.getElementById('contentPdf').files[0];
+        const statusEl = document.getElementById('status');
+        const btn = document.getElementById('processBtn');
+
+        // Validation
+        if (!templateFile || !contentFile) {
+            statusEl.style.color = '#e74c3c';
+            statusEl.innerText = 'Please upload both PDF files!';
+            return;
+        }
+
+        btn.disabled = true;
+        statusEl.style.color = '#2980b9';
+        statusEl.innerText = 'Processing... Please wait.';
+
+        try {
+            // 1. Read files as ArrayBuffers
+            const templateBytes = await templateFile.arrayBuffer();
+            const contentBytes = await contentFile.arrayBuffer();
+
+            // 2. Load PDFs into pdf-lib
+            const templatePdf = await PDFDocument.load(templateBytes);
+            const contentPdf = await PDFDocument.load(contentBytes);
+
+            // 3. Create a new empty PDF
+            const mergedPdf = await PDFDocument.create();
+
+            // 4. Copy the single template page
+            const [templatePage] = await mergedPdf.copyPages(templatePdf, [0]);
+            
+            // 5. Copy all content pages
+            const contentPageCount = contentPdf.getPageCount();
+            const contentPages = await mergedPdf.copyPages(contentPdf, 
+                Array.from({ length: contentPageCount }, (_, i) => i)
+            );
+
+            // 6. Interleave: Add Template, then Content Page 1, Template, Content Page 2...
+            for (let i = 0; i < contentPageCount; i++) {
+                mergedPdf.addPage(templatePage);
+                mergedPdf.addPage(contentPages[i]);
+            }
+
+            // 7. Save and Download
+            const pdfBytes = await mergedPdf.save();
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'Final_Alternated_Journal.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            statusEl.style.color = '#27ae60';
+            statusEl.innerText = 'Success! Your Journal is downloading.';
+        } catch (error) {
+            console.error(error);
+            statusEl.style.color = '#e74c3c';
+            statusEl.innerText = 'Error processing PDFs. Check console.';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+</html>
