@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Alternater - Journal Maker</title>
+    <title>Smart PDF Alternater - Journal Maker</title>
     <!-- Import pdf-lib from CDN -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
@@ -14,8 +14,9 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            padding: 20px;
         }
         .container {
             background: white;
@@ -27,14 +28,16 @@
             text-align: center;
         }
         h1 { color: #2c3e50; margin-bottom: 0.5rem; }
-        p { color: #7f8c8d; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        p { color: #7f8c8d; margin-bottom: 1.5rem; font-size: 0.9rem; line-height: 1.5; }
         .upload-box {
             border: 2px dashed #bdc3c7;
             padding: 1rem;
             border-radius: 8px;
             margin-bottom: 1rem;
             text-align: left;
+            transition: border-color 0.3s;
         }
+        .upload-box:hover { border-color: #3498db; }
         label { font-weight: bold; display: block; margin-bottom: 0.5rem; color: #34495e; }
         input[type="file"] { width: 100%; }
         button {
@@ -51,26 +54,26 @@
         }
         button:hover { background-color: #3498db; }
         button:disabled { background-color: #95a5a6; cursor: not-allowed; }
-        #status { margin-top: 1rem; font-weight: bold; color: #27ae60; min-height: 20px; }
+        #status { margin-top: 1rem; font-weight: bold; color: #27ae60; min-height: 20px; font-size: 0.9rem;}
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>PDF Alternater</h1>
-    <p>Automatically insert your 1-page Journal Template before every page of your Assignment.</p>
+    <h1>Smart PDF Alternater</h1>
+    <p>Upload any two PDFs. The tool will <strong>automatically detect</strong> the shorter one as your template and interleave it with the longer one!</p>
     
     <div class="upload-box">
-        <label for="templatePdf">1. Upload 1-Page Template (Journal Cover)</label>
-        <input type="file" id="templatePdf" accept="application/pdf">
+        <label for="pdfA">Upload First PDF</label>
+        <input type="file" id="pdfA" accept="application/pdf">
     </div>
 
     <div class="upload-box">
-        <label for="contentPdf">2. Upload Multi-Page Assignment</label>
-        <input type="file" id="contentPdf" accept="application/pdf">
+        <label for="pdfB">Upload Second PDF</label>
+        <input type="file" id="pdfB" accept="application/pdf">
     </div>
 
-    <button id="processBtn" onclick="generateJournal()">Generate Final Journal</button>
+    <button id="processBtn" onclick="generateJournal()">Generate Smart Journal</button>
     <div id="status"></div>
 </div>
 
@@ -78,13 +81,13 @@
     const { PDFDocument } = PDFLib;
 
     async function generateJournal() {
-        const templateFile = document.getElementById('templatePdf').files[0];
-        const contentFile = document.getElementById('contentPdf').files[0];
+        const fileA = document.getElementById('pdfA').files[0];
+        const fileB = document.getElementById('pdfB').files[0];
         const statusEl = document.getElementById('status');
         const btn = document.getElementById('processBtn');
 
         // Validation
-        if (!templateFile || !contentFile) {
+        if (!fileA || !fileB) {
             statusEl.style.color = '#e74c3c';
             statusEl.innerText = 'Please upload both PDF files!';
             return;
@@ -92,32 +95,57 @@
 
         btn.disabled = true;
         statusEl.style.color = '#2980b9';
-        statusEl.innerText = 'Processing... Please wait.';
+        statusEl.innerText = 'Analyzing page counts...';
 
         try {
             // 1. Read files as ArrayBuffers
-            const templateBytes = await templateFile.arrayBuffer();
-            const contentBytes = await contentFile.arrayBuffer();
+            const bytesA = await fileA.arrayBuffer();
+            const bytesB = await fileB.arrayBuffer();
 
-            // 2. Load PDFs into pdf-lib
-            const templatePdf = await PDFDocument.load(templateBytes);
-            const contentPdf = await PDFDocument.load(contentBytes);
+            // 2. Load PDFs to check page counts
+            const pdfA = await PDFDocument.load(bytesA);
+            const pdfB = await PDFDocument.load(bytesB);
+            
+            const countA = pdfA.getPageCount();
+            const countB = pdfB.getPageCount();
 
-            // 3. Create a new empty PDF
+            // 3. SMART DETECTION: Figure out which is the template and which is the content
+            let templatePdf, contentPdf, templateName, contentName;
+            
+            if (countA <= countB) {
+                templatePdf = pdfA;
+                contentPdf = pdfB;
+                templateName = fileA.name;
+                contentName = fileB.name;
+            } else {
+                templatePdf = pdfB;
+                contentPdf = pdfA;
+                templateName = fileB.name;
+                contentName = fileA.name;
+            }
+
+            statusEl.innerText = `Detected Template: ${templateName} (${templatePdf.getPageCount()} pages)\nDetected Content: ${contentName} (${contentPdf.getPageCount()} pages)\nMerging...`;
+
+            // 4. Create a new empty PDF
             const mergedPdf = await PDFDocument.create();
 
-            // 4. Copy the single template page
-            const [templatePage] = await mergedPdf.copyPages(templatePdf, [0]);
-            
-            // 5. Copy all content pages
+            const templatePageCount = templatePdf.getPageCount();
             const contentPageCount = contentPdf.getPageCount();
-            const contentPages = await mergedPdf.copyPages(contentPdf, 
-                Array.from({ length: contentPageCount }, (_, i) => i)
-            );
 
-            // 6. Interleave: Add Template, then Content Page 1, Template, Content Page 2...
+            // 5. Copy all pages from both PDFs
+            const templatePageIndices = Array.from({ length: templatePageCount }, (_, i) => i);
+            const templatePages = await mergedPdf.copyPages(templatePdf, templatePageIndices);
+
+            const contentPageIndices = Array.from({ length: contentPageCount }, (_, i) => i);
+            const contentPages = await mergedPdf.copyPages(contentPdf, contentPageIndices);
+
+            // 6. Interleave: Add ALL template pages, then ONE content page, repeat...
             for (let i = 0; i < contentPageCount; i++) {
-                mergedPdf.addPage(templatePage);
+                // Insert the entire template (whether it's 1 page, 2 pages, etc.)
+                for (let t = 0; t < templatePageCount; t++) {
+                    mergedPdf.addPage(templatePages[t]);
+                }
+                // Insert the current content page
                 mergedPdf.addPage(contentPages[i]);
             }
 
@@ -126,17 +154,17 @@
             const blob = new Blob([pdfBytes], { type: 'application/pdf' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = 'Final_Alternated_Journal.pdf';
+            link.download = 'Smart_Alternated_Journal.pdf';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
 
             statusEl.style.color = '#27ae60';
-            statusEl.innerText = 'Success! Your Journal is downloading.';
+            statusEl.innerText = 'Success! Your Smart Journal is downloading.';
         } catch (error) {
             console.error(error);
             statusEl.style.color = '#e74c3c';
-            statusEl.innerText = 'Error processing PDFs. Check console.';
+            statusEl.innerText = 'Error processing PDFs. Check console for details.';
         } finally {
             btn.disabled = false;
         }
@@ -145,3 +173,4 @@
 
 </body>
 </html>
+
