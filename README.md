@@ -26,8 +26,7 @@ Instead of manually merging PDFs, this tool instantly interleaves a **1-page jou
 5. The perfectly interleaved PDF will automatically download to your device!
 
 ## 🌐 Live Demo
-*(Add your GitHub Pages or Netlify link here once deployed!)*
-[https://hackerop777.github.io/PDF-Alternater/]()
+[https://pdfalternater.vercel.app/]()
 
 ## 📝 License
 This project is open-source and available under the [MIT License](LICENSE). Feel free to use, modify, and share it with your classmates!
